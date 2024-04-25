@@ -74,9 +74,9 @@ pub unsafe fn find_process_id_by_name(process_name: &str) -> Vec<u32> {
     let mut process = zeroed::<PROCESSENTRY32W>();
     process.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-    if Process32FirstW(h, &mut process).as_bool() {
+    if Process32FirstW(h, &mut process).is_ok() {
         loop {
-            if Process32NextW(h, &mut process).as_bool() {
+            if Process32NextW(h, &mut process).is_ok() {
                 if get_proc_name(process.szExeFile) == process_name {
                     temp.push(process.th32ProcessID);
                 }
@@ -111,9 +111,9 @@ pub unsafe fn find_first_process_id_by_name(process_name: &str) -> Option<u32> {
     let mut process = zeroed::<PROCESSENTRY32W>();
     process.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-    if Process32FirstW(h, &mut process).as_bool() {
+    if Process32FirstW(h, &mut process).is_ok() {
         loop {
-            if Process32NextW(h, &mut process).as_bool() {
+            if Process32NextW(h, &mut process).is_ok() {
                 if get_proc_name(process.szExeFile) == process_name {
                     break;
                 }
@@ -150,9 +150,9 @@ pub unsafe fn find_process_name_by_id(process_id: u32) -> Option<String> {
     let mut process = zeroed::<PROCESSENTRY32W>();
     process.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-    if Process32FirstW(h, &mut process).as_bool() {
+    if Process32FirstW(h, &mut process).is_ok() {
         loop {
-            if Process32NextW(h, &mut process).as_bool() {
+            if Process32NextW(h, &mut process).is_ok() {
                 let id: u32 = process.th32ProcessID;
                 if id == process_id {
                     break;
@@ -195,9 +195,9 @@ pub unsafe fn tasklist() -> HashMap<String, u32> {
     let mut process = zeroed::<PROCESSENTRY32W>();
     process.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-    if Process32FirstW(h, &mut process).as_bool() {
+    if Process32FirstW(h, &mut process).is_ok() {
         loop {
-            if Process32NextW(h, &mut process).as_bool() {
+            if Process32NextW(h, &mut process).is_ok() {
                 temp.insert(
                     get_proc_name(process.szExeFile),
                     process.th32ProcessID.try_into().unwrap(),
@@ -259,17 +259,17 @@ pub unsafe fn enable_debug_priv() -> bool {
         PCSTR(privilege.as_ptr()),
         &mut tp.Privileges[0].Luid,
     )
-    .as_bool()
+    .is_ok()
     {
         if AdjustTokenPrivileges(
             h,
             BOOL(0),
-            &mut tp,
+            Some(&mut tp),
             size_of::<TOKEN_PRIVILEGES>() as _,
-            0 as _,
-            0 as _,
+            None,
+            None,
         )
-        .as_bool()
+        .is_ok()
         {
             CloseHandle(h);
             return true;
@@ -298,7 +298,7 @@ pub unsafe fn kill(pid: u32) -> bool {
 
     let _ = match OpenProcess(PROCESS_TERMINATE, BOOL(0), pid) {
         Ok(h) => {
-            if TerminateProcess(h, 0).as_bool() {
+            if TerminateProcess(h, 0).is_ok() {
                 CloseHandle(h);
                 return true;
             } else {

@@ -28,23 +28,23 @@ pub unsafe fn get_proc_sid_and_user(pid: u32) -> (String, String) {
     let _ = match OpenProcess(PROCESS_QUERY_INFORMATION, BOOL(0), pid) {
         Ok(h) => {
             let mut pt = HANDLE(0);
-            if OpenProcessToken(h, TOKEN_QUERY, &mut pt).as_bool() {
+            if OpenProcessToken(h, TOKEN_QUERY, &mut pt).is_ok() {
                 let token_user =
                     std::alloc::alloc(std::alloc::Layout::new::<TOKEN_USER>()) as *mut c_void;
                 let mut ret_size = 0;
 
                 //get the ret_size
-                let _ = GetTokenInformation(pt, TokenUser, token_user, 0, &mut ret_size);
+                let _ = GetTokenInformation(pt, TokenUser, Some(token_user), 0, &mut ret_size);
                 // token_user = libc::malloc(ret_size as usize);
                 let mut buffer: Vec<u8> = vec![0; ret_size as usize];
                 if GetTokenInformation(
                     pt,
                     TokenUser,
-                    buffer.as_mut_ptr() as *mut c_void,
+                    Some(buffer.as_mut_ptr() as *mut c_void),
                     ret_size,
                     &mut ret_size,
                 )
-                .as_bool()
+                .is_ok()
                 {
                     let token_user_struct: &TOKEN_USER = &*buffer.as_ptr().cast();
                     let sid = token_user_struct.User.Sid;
@@ -108,6 +108,9 @@ use std::mem::zeroed;
 use std::os::windows::prelude::{OsStrExt, OsStringExt};
 use std::ptr::null_mut;
 
+use windows::Wdk::System::Threading::NtQueryInformationProcess;
+use windows::Wdk::System::Threading::PROCESSINFOCLASS;
+use windows::Win32::Foundation::NTSTATUS;
 ///convert PSTR to string use std::ffi::CStr
 use windows::{core::PSTR, Win32::Foundation::MAX_PATH};
 
@@ -150,9 +153,9 @@ pub unsafe fn get_proc_threads(pid: u32) -> Vec<u32> {
     let mut thread = zeroed::<THREADENTRY32>();
     thread.dwSize = size_of::<THREADENTRY32>() as u32;
     let mut temp: Vec<u32> = vec![];
-    if Thread32First(h, &mut thread).as_bool() {
+    if Thread32First(h, &mut thread).is_ok() {
         loop {
-            if Thread32Next(h, &mut thread).as_bool() {
+            if Thread32Next(h, &mut thread).is_ok() {
                 if thread.th32OwnerProcessID == pid {
                     temp.push(thread.th32ThreadID);
                 }
@@ -238,9 +241,9 @@ pub unsafe fn get_proc_parrent(pid: u32) -> Option<u32> {
     let mut process = zeroed::<PROCESSENTRY32>();
     process.dwSize = size_of::<PROCESSENTRY32>() as u32;
 
-    if Process32First(h, &mut process).as_bool() {
+    if Process32First(h, &mut process).is_ok() {
         loop {
-            if Process32Next(h, &mut process).as_bool() {
+            if Process32Next(h, &mut process).is_ok() {
                 if process.th32ProcessID == pid {
                     CloseHandle(h);
                     return Some(process.th32ParentProcessID);
@@ -288,7 +291,7 @@ pub unsafe fn get_proc_time(pid: u32) -> (String, String, CpuTime) {
                 &mut kernel_time,
                 &mut user_time,
             )
-            .as_bool()
+            .is_ok()
             {
                 CloseHandle(h);
                 let (start_time, exit_time, kernel_time, user_time) =
@@ -400,7 +403,7 @@ pub unsafe fn get_proc_params(pid: u32) -> String {
     use windows::Win32::Foundation::{CloseHandle, BOOL};
     use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
     use windows::Win32::System::Threading::{
-        NtQueryInformationProcess, OpenProcess, PEB, PROCESSINFOCLASS, PROCESS_BASIC_INFORMATION,
+        OpenProcess, PEB, PROCESS_BASIC_INFORMATION,
         PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ, RTL_USER_PROCESS_PARAMETERS,
     };
 
@@ -419,16 +422,16 @@ pub unsafe fn get_proc_params(pid: u32) -> String {
                 size_of::<PROCESS_BASIC_INFORMATION>() as _,
                 null_mut(),
             ) {
-                Ok(_) => {
+                NTSTATUS(0) => {
                     let mut peb = zeroed::<PEB>();
                     if ReadProcessMemory(
                         h,
                         pbi.PebBaseAddress as _,
                         std::ptr::addr_of_mut!(peb) as _,
                         size_of::<PEB>(),
-                        null_mut(),
+                        None,
                     )
-                    .as_bool()
+                    .is_ok()
                     {
                         let mut proc_params = zeroed::<RTL_USER_PROCESS_PARAMETERS>();
 
@@ -437,9 +440,9 @@ pub unsafe fn get_proc_params(pid: u32) -> String {
                             peb.ProcessParameters as _,
                             std::ptr::addr_of_mut!(proc_params) as _,
                             size_of::<RTL_USER_PROCESS_PARAMETERS>(),
-                            null_mut(),
+                            None,
                         )
-                        .as_bool()
+                        .is_ok()
                         {
                             let cmd_lenth = proc_params.CommandLine.MaximumLength;
                             let cmd_buffer = proc_params.CommandLine.Buffer;
@@ -454,9 +457,9 @@ pub unsafe fn get_proc_params(pid: u32) -> String {
                         return format!("access denied {:?}", GetLastError()).to_string();
                     }
                 }
-                Err(_) => {
+                NTSTATUS(e) => {
                     CloseHandle(h);
-                    return format!("access denied {:?}", GetLastError()).to_string();
+                    return format!("access denied {:?}", e).to_string();
                 }
             };
         }
@@ -480,9 +483,9 @@ pub(crate) unsafe fn get_proc_params_from_buffer(pwstr: PWSTR, len: u16, h: HAND
         pwstr.0 as _,
         std::ptr::addr_of_mut!(temp) as _,
         len as _,
-        null_mut(),
+        None,
     )
-    .as_bool()
+    .is_ok()
     {
         let x = &temp[0..len as usize];
 
@@ -526,7 +529,7 @@ pub unsafe fn get_proc_io_counter(pid: u32) -> IoCounter {
     let _ = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, BOOL(0), pid) {
         Ok(h) => {
             let mut io = zeroed::<IO_COUNTERS>();
-            if GetProcessIoCounters(h, &mut io).as_bool() {
+            if GetProcessIoCounters(h, &mut io).is_ok() {
                 CloseHandle(h);
                 return IoCounter::new(io);
             } else {
@@ -606,7 +609,7 @@ pub unsafe fn get_process_handle_counter(pid: u32) -> u32 {
     let _ = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, BOOL(0), pid) {
         Ok(h) => {
             let mut count = 0 as u32;
-            if GetProcessHandleCount(h, &mut count).as_bool() {
+            if GetProcessHandleCount(h, &mut count).is_ok() {
                 CloseHandle(h);
                 return count;
             } else {
@@ -665,7 +668,7 @@ pub unsafe fn get_proc_file_info(pid: u32) -> HashMap<String, String> {
         len,
         addr.as_mut_ptr() as _,
     )
-    .as_bool()
+    .is_ok()
     {
         let a = addr.split(|&x| x == 0);
         let mut temp: Vec<String> = vec![];
@@ -843,7 +846,7 @@ pub unsafe fn is_wow_64(pid: u32) -> Option<bool> {
     let _ = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, BOOL(0), pid) {
         Ok(h) => {
             let mut wow64: BOOL = BOOL(1);
-            if IsWow64Process(h, &mut wow64).as_bool() {
+            if IsWow64Process(h, &mut wow64).is_ok() {
                 CloseHandle(h);
                 return Some(wow64.as_bool());
             } else {

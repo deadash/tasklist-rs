@@ -135,7 +135,7 @@ impl Tasklist {
         let mut process = zeroed::<PROCESSENTRY32W>();
         process.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
-        if Process32FirstW(h, &mut process).as_bool() {
+        if Process32FirstW(h, &mut process).is_ok() {
             let pid = process.th32ProcessID;
             let pname = get_proc_name(process.szExeFile);
             return Tasklist {
@@ -161,7 +161,7 @@ impl Iterator for Tasklist {
         let mut process = self.entry;
 
         unsafe {
-            if Process32NextW(self.handle, &mut process).as_bool() {
+            if Process32NextW(self.handle, &mut process).is_ok() {
                 let pid = process.th32ProcessID;
                 let pname = get_proc_name(process.szExeFile);
                 Some(Process::new(pid, pname))
