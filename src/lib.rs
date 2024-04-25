@@ -216,8 +216,9 @@ pub unsafe fn tasklist() -> HashMap<String, u32> {
 #[cfg(any(windows, doc))]
 fn get_proc_name(name: [u16; 260]) -> String {
     use std::os::windows::ffi::OsStringExt;
-    let s = std::ffi::OsString::from_wide(&name);
-    s.into_string().unwrap()
+    let length = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+    let s = std::ffi::OsString::from_wide(&name[..length]);
+    s.into_string().unwrap_or_else(|_| "Invalid Unicode data".to_owned())
 }
 /// enbale the debug privilege for your program , it return a `bool` to show if it success.
 /// ```
