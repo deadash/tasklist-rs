@@ -170,8 +170,8 @@ pub unsafe fn find_process_name_by_id(process_id: u32) -> Option<String> {
 
 use std::collections::HashMap;
 
-/// get the windows tasklist ,return a `HashMap<String,u32>`
-/// `String` is the name of process, and `u32` is the id of process
+/// get the windows tasklist ,return a `HashMap<u32, String>`
+/// `u32` is the id of process, and `String` is the name of process
 /// ```
 /// unsafe{
 ///     let list = tasklist::tasklist();
@@ -179,7 +179,7 @@ use std::collections::HashMap;
 /// }
 /// ```
 #[cfg(any(windows, doc))]
-pub unsafe fn tasklist() -> HashMap<String, u32> {
+pub unsafe fn tasklist() -> HashMap<u32, String> {
     use std::mem::size_of;
     use std::mem::zeroed;
     use windows::Win32::Foundation::CloseHandle;
@@ -188,7 +188,7 @@ pub unsafe fn tasklist() -> HashMap<String, u32> {
         TH32CS_SNAPPROCESS,
     };
 
-    let mut temp: HashMap<String, u32> = HashMap::new();
+    let mut temp: HashMap<u32, String> = HashMap::new();
 
     let h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).unwrap();
 
@@ -199,8 +199,8 @@ pub unsafe fn tasklist() -> HashMap<String, u32> {
         loop {
             if Process32NextW(h, &mut process).is_ok() {
                 temp.insert(
-                    get_proc_name(process.szExeFile),
                     process.th32ProcessID.try_into().unwrap(),
+                    get_proc_name(process.szExeFile),
                 );
             } else {
                 break;
@@ -208,7 +208,7 @@ pub unsafe fn tasklist() -> HashMap<String, u32> {
         }
     }
 
-    CloseHandle(h);
+    let _ = CloseHandle(h);
     temp
 }
 
